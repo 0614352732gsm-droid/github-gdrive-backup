@@ -167,7 +167,7 @@ async function uploadTree(drive, localDir, driveFolderId, stats, relative) {
   const entries = await fsp.readdir(localDir, { withFileTypes: true });
   const existing = await children(drive, driveFolderId);
   const dirs = entries.filter(e => e.isDirectory() && e.name !== '.git');
-  const files = entries.filter(e => e.isFile());
+  const files = entries.filter(e => e.isFile() && e.name !== '.git');
   const unsupported = entries.filter(e => !e.isDirectory() && !e.isFile());
   for (const e of unsupported) {
     throw new Error('Unsupported symlink or special file: ' + path.join(relative, e.name));
