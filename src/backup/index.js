@@ -389,10 +389,15 @@ async function runBackup(options = {}) {
   );
   const drive = new GoogleDriveClient(auth);
 
+  // Keep every GitHub account in its own Drive folder. Each account
+  // owns its own timestamped sessions and repository folders, preventing
+  // collisions between accounts and isolating future incremental state.
+  const accountFolder = await drive.ensureFolder(owner, rootFolderId);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const sessionName = `backup-${timestamp}`;
-  const sessionFolder = await drive.ensureFolder(sessionName, rootFolderId);
+  const sessionFolder = await drive.ensureFolder(sessionName, accountFolder);
 
+  logger.info(`Backup account folder: ${owner} (${accountFolder})`);
   logger.info(`Backup session folder: ${sessionFolder}`);
 
   // Multi-destination fan-out (3-2-1). Drive is primary; these are mirrors.
@@ -410,7 +415,7 @@ async function runBackup(options = {}) {
     incrementalCtx = {
       sessionName,
       maxChainDepth,
-      prevStateByRepo: await loadPrevIncrementalState(drive, rootFolderId, sessionFolder),
+      prevStateByRepo: await loadPrevIncrementalState(drive, accountFolder, sessionFolder),
     };
     logger.info(`Incremental (delta) mode enabled — ${Object.keys(incrementalCtx.prevStateByRepo).length} repo state(s) carried forward; max chain depth ${maxChainDepth}`);
   }
