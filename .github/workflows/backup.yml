@@ -92,6 +92,8 @@ jobs:
       - name: Run backup
         env:
           GITHUB_TOKEN:              ${{ secrets.GH_BACKUP_TOKEN }}
+          GH_BACKUP_TOKEN_ELLEN:     ${{ secrets.GH_BACKUP_TOKEN_ELLEN }}
+          GH_BACKUP_TOKEN_ABDULRAHMAN: ${{ secrets.GH_BACKUP_TOKEN_ABDULRAHMAN }}
           GITHUB_USER:               ${{ secrets.GH_USER }}
           GDRIVE_FOLDER_ID:          ${{ secrets.GDRIVE_FOLDER_ID }}
           GOOGLE_CLIENT_SECRET_PATH: ./credentials/google-client-secret.json
@@ -108,16 +110,47 @@ jobs:
           GITLAB_HOST:               ${{ github.event.inputs.gitlab_host || 'https://gitlab.com' }}
           BACKUP_ENCRYPTION_KEY:     ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
-          if [ -n "$REPOS" ]; then
-            node -e "
-              const { runBackup } = require('./src/backup/index');
-              runBackup({ repos: process.env.REPOS.split(',').map(r => r.trim()) })
-                .then(s => { console.log(JSON.stringify(s, null, 2)); process.exit(s.failed > 0 ? 1 : 0); })
-                .catch(e => { console.error(e); process.exit(1); });
-            "
-          else
-            node src/backup/index.js
-          fi
+          node <<'NODE'
+          const { runBackup } = require('./src/backup/index');
+          const accounts = [
+            { owner: process.env.GITHUB_USER, token: process.env.GITHUB_TOKEN },
+            { owner: 'EllenBosMarcelMulder', token: process.env.GH_BACKUP_TOKEN_ELLEN },
+            { owner: 'AbdulrahmanMulder', token: process.env.GH_BACKUP_TOKEN_ABDULRAHMAN },
+          ];
+          const requested = (process.env.REPOS || '').split(',').map(s => s.trim()).filter(Boolean);
+          const ownerOf = name => name.split('/')[0].toLowerCase();
+          const selected = requested.length
+            ? accounts.filter(a => requested.some(name => ownerOf(name) === a.owner.toLowerCase()))
+            : accounts;
+          const unknown = requested.filter(name => !accounts.some(a => ownerOf(name) === a.owner.toLowerCase()));
+          const missing = selected.filter(a => !a.token).map(a => a.owner);
+          if (unknown.length || missing.length) {
+            if (unknown.length) console.error('Repositories with unsupported owners:', unknown.join(', '));
+            if (missing.length) console.error('Missing backup token for:', missing.join(', '));
+            process.exit(1);
+          }
+          (async () => {
+            let success = 0;
+            let total = 0;
+            let failed = 0;
+            for (const account of selected) {
+              const repos = requested.filter(name => ownerOf(name) === account.owner.toLowerCase());
+              const opts = { owner: account.owner, token: account.token };
+              if (requested.length) opts.repos = repos;
+              const result = await runBackup(opts);
+              console.log('Backup account:', account.owner, 'Total:', result.total, 'Success:', result.success, 'Failed:', result.failed);
+              success += result.success;
+              failed += result.failed;
+              total += result.total;
+              if (result.total === 0) {
+                console.error('No repositories enumerated for', account.owner, '- check PAT permissions.');
+                failed++;
+              }
+            }
+            console.log('All-account summary:', { total, success, failed });
+            if (failed || !total) process.exitCode = 1;
+          })().catch(e => { console.error(e.message); process.exitCode = 1; });
+          NODE
 
       - name: Run npm audit on backed-up Node repos
         if: success()
