@@ -1,8 +1,7 @@
 name: Cleanup Old Backup Sessions
 
 on:
-  schedule:
-    - cron: '0 3 * * 0'
+  # Automatic deletion disabled to protect archival backups.
   workflow_dispatch:
     inputs:
       retention_days:
