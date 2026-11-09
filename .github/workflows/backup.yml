@@ -1,4 +1,4 @@
-name: Scheduled GitHub → Google Drive Backup
+name: GitHub → Google Drive — gewone bestanden
 
 on:
   # schedule:
@@ -6,50 +6,10 @@ on:
   #   - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
-      incremental:
-        description: 'Only back up repos changed since last session'
-        required: false
-        default: 'false'
-        type: boolean
-      incremental_mode:
-        description: 'Archive strategy: full (zip) or delta (git bundle, upload only new objects)'
-        required: false
-        default: 'full'
-        type: choice
-        options: ['full', 'delta']
       repos:
-        description: 'Comma-separated list of repos to back up (leave blank for all)'
+        description: 'Optioneel: account/repository,account/repository (leeg = alle 58)'
         required: false
         default: ''
-      include:
-        description: 'What to include (comma-separated: code,issues,pull_requests,releases,wiki,labels,milestones,config)'
-        required: false
-        default: 'code,issues,pull_requests,releases,wiki,labels,milestones'
-      orgs:
-        description: 'Comma-separated list of GitHub orgs to also back up (leave blank to skip)'
-        required: false
-        default: ''
-      storage_target:
-        description: 'Storage target: drive, s3, azure, or b2'
-        required: false
-        default: 'drive'
-      include_sbom:
-        description: 'Generate SBOM for this repo (true/false)'
-        required: false
-        default: 'false'
-        type: boolean
-      runner:
-        description: 'Runner label'
-        required: false
-        default: 'ubuntu-latest'
-      gitlab_token:
-        description: 'GitLab personal access token (optional)'
-        required: false
-        default: ''
-      gitlab_host:
-        description: 'GitLab host URL'
-        required: false
-        default: 'https://gitlab.com'
 
 permissions:
   contents: read
@@ -98,20 +58,10 @@ jobs:
           GDRIVE_FOLDER_ID:          ${{ secrets.GDRIVE_FOLDER_ID }}
           GOOGLE_CLIENT_SECRET_PATH: ./credentials/google-client-secret.json
           GOOGLE_TOKEN_PATH:         ./credentials/google-token.json
-          BACKUP_INCLUDE:            ${{ github.event.inputs.include || 'code,issues,pull_requests,releases,wiki,labels,milestones' }}
-          INCREMENTAL:               ${{ github.event.inputs.incremental || 'false' }}
-          INCREMENTAL_MODE:          ${{ github.event.inputs.incremental_mode || 'full' }}
-          BACKUP_CONCURRENCY:        '3'
-          BACKUP_TMP_DIR:            /tmp/gh-backup
           REPOS:                     ${{ github.event.inputs.repos }}
-          GITHUB_ORGS:               ${{ github.event.inputs.orgs }}
-          STORAGE_TARGET:            ${{ github.event.inputs.storage_target || 'drive' }}
-          GITLAB_TOKEN:              ${{ github.event.inputs.gitlab_token }}
-          GITLAB_HOST:               ${{ github.event.inputs.gitlab_host || 'https://gitlab.com' }}
-          BACKUP_ENCRYPTION_KEY:     ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
           node <<'NODE'
-          const { runBackup } = require('./src/backup/index');
+          const { runReadableBackup } = require('./src/backup/plain-files');
           const accounts = [
             { owner: process.env.GITHUB_USER, token: process.env.GITHUB_TOKEN },
             { owner: 'EllenBosMarcelMulder', token: process.env.GH_BACKUP_TOKEN_ELLEN },
@@ -137,7 +87,7 @@ jobs:
               const repos = requested.filter(name => ownerOf(name) === account.owner.toLowerCase());
               const opts = { owner: account.owner, token: account.token };
               if (requested.length) opts.repos = repos;
-              const result = await runBackup(opts);
+              const result = await runReadableBackup(opts);
               console.log('Backup account:', account.owner, 'Total:', result.total, 'Success:', result.success, 'Failed:', result.failed);
               success += result.success;
               failed += result.failed;
