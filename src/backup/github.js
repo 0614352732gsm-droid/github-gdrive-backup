@@ -15,19 +15,30 @@ class GitHubClient {
   }
 
   async listRepos(owner) {
+    // GitHub's listForUser returns public repositories even with a PAT.
+    // For the authenticated owner use the endpoint that also lists private repos.
+    // Keep the scope narrowed to the requested owner.
     const repos = [];
     let page = 1;
+    const auth = await this.octokit.users.getAuthenticated();
+    const isAuthenticatedOwner = auth.data.login.toLowerCase() === owner.toLowerCase();
     while (true) {
-      const { data } = await this.octokit.repos.listForUser({
-        username: owner,
-        per_page: 100,
-        page,
-        type: 'all',
-      }).catch(() =>
-        this.octokit.repos.listForOrg({ org: owner, per_page: 100, page, type: 'all' })
-      );
+      const { data } = isAuthenticatedOwner
+        ? await this.octokit.repos.listForAuthenticatedUser({
+            affiliation: 'owner',
+            per_page: 100,
+            page,
+          })
+        : await this.octokit.repos.listForUser({
+            username: owner,
+            per_page: 100,
+            page,
+            type: 'all',
+          }).catch(() =>
+            this.octokit.repos.listForOrg({ org: owner, per_page: 100, page, type: 'all' })
+          );
       if (!data.length) break;
-      repos.push(...data);
+      repos.push(...data.filter(repo => repo.owner.login.toLowerCase() === owner.toLowerCase()));
       if (data.length < 100) break;
       page++;
     }
