@@ -415,8 +415,15 @@ async function runBackup(options = {}) {
     logger.info(`Incremental (delta) mode enabled — ${Object.keys(incrementalCtx.prevStateByRepo).length} repo state(s) carried forward; max chain depth ${maxChainDepth}`);
   }
 
+  // Resolve explicitly selected repositories to complete GitHub API objects.
+  // A name-only object lacks clone_url and full_name, so clone --mirror fails.
   let repos = options.repos
-    ? options.repos.map(r => ({ owner: { login: r.split('/')[0] }, name: r.split('/')[1] }))
+    ? await Promise.all(options.repos.map(async (fullName) => {
+        const [repoOwner, repoName] = fullName.split('/');
+        if (!repoOwner || !repoName) throw new Error(`Invalid repo name: ${fullName}`);
+        const { data } = await gh.octokit.repos.get({ owner: repoOwner, repo: repoName });
+        return data;
+      }))
     : await gh.listRepos(owner);
 
   // Multi-org support
